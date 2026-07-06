@@ -1,28 +1,40 @@
-// server.js - OpenAI to NVIDIA NIM API Proxy
+// server.js
 
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 
-console.log('SERVER VERSION: JULY-06-V4');
+console.log('SERVER VERSION: JULY-06-V5');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
-app.use(express.json());
+
+app.use(express.json({
+    limit: '50mb'
+}));
+
+app.use((err, req, res, next) => {
+    console.error('BODY PARSE ERROR:', err);
+    res.status(400).json({
+        error: err.message
+    });
+});
 
 app.use((req, res, next) => {
     console.log(
         `[${new Date().toISOString()}]`,
         req.method,
-        req.originalUrl
+        req.originalUrl,
+        'CT:',
+        req.headers['content-type'],
+        'CL:',
+        req.headers['content-length']
     );
     next();
 });
 
-// NVIDIA settings
 const NIM_API_BASE =
     process.env.NIM_API_BASE ||
     'https://integrate.api.nvidia.com/v1';
@@ -33,7 +45,6 @@ const NIM_API_KEY =
 const SHOW_REASONING = false;
 const ENABLE_THINKING_MODE = false;
 
-// Root
 app.get('/', (req, res) => {
     res.json({
         status: 'ok',
@@ -41,7 +52,6 @@ app.get('/', (req, res) => {
     });
 });
 
-// Health
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -51,7 +61,6 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Models
 app.get('/v1/models', (req, res) => {
     res.json({
         object: 'list',
@@ -78,72 +87,65 @@ app.get('/v1/models', (req, res) => {
     });
 });
 
-// Main handler
 async function handleChat(req, res) {
     try {
+        console.log(
+            'RAW BODY:',
+            JSON.stringify(req.body, null, 2)
+        );
+
         const {
             model,
             messages,
             temperature,
             max_tokens,
             stream
-        } = req.body;
+        } = req.body || {};
 
         const nimModel =
-            typeof model === 'string' &&
-            model.trim()
+            (typeof model === 'string' &&
+             model.trim())
                 ? model.trim()
                 : 'meta/llama-3.1-8b-instruct';
 
-        console.log(
-            '========== NVIDIA REQUEST =========='
-        );
-        console.log(
-            'Requested model:',
-            model
-        );
-        console.log(
-            'Using model:',
-            nimModel
-        );
-        console.log(
-            'API Base:',
-            NIM_API_BASE
-        );
-        console.log(
-            'API Key:',
-            NIM_API_KEY
-                ? NIM_API_KEY.substring(0,10)
-                    + '...'
-                : 'MISSING'
-        );
-        console.log(
-            '===================================='
-        );
-
         const nimRequest = {
             model: nimModel,
-            messages: messages,
-            temperature:
-                temperature ?? 0.6,
-            max_tokens:
-                Math.min(
-                    max_tokens ?? 2048,
-                    8192
-                ),
-            stream:
-                stream || false,
-            extra_body:
-                ENABLE_THINKING_MODE
-                    ? {
-                          chat_template_kwargs:
-                              {
-                                  thinking:
-                                      true
-                              }
-                      }
-                    : undefined
+            messages: messages || [],
+            temperature: temperature ?? 0.7,
+            max_tokens: Math.min(
+                max_tokens ?? 2048,
+                8192
+            ),
+            stream: stream || false
         };
+
+        if (ENABLE_THINKING_MODE) {
+            nimRequest.extra_body = {
+                chat_template_kwargs: {
+                    thinking: true
+                }
+            };
+        }
+
+        console.log('========== NVIDIA REQUEST ==========');
+        console.log(
+            JSON.stringify(
+                nimRequest,
+                null,
+                2
+            )
+        );
+        console.log(
+            'URL:',
+            `${NIM_API_BASE}/chat/completions`
+        );
+        console.log(
+            'API KEY:',
+            NIM_API_KEY
+                ? NIM_API_KEY.substring(0,10)+'...'
+                : 'MISSING'
+        );
+        console.log('====================================');
 
         const response =
             await axios.post(
@@ -163,85 +165,49 @@ async function handleChat(req, res) {
                 }
             );
 
-        // STREAM
         if (stream) {
             res.setHeader(
                 'Content-Type',
                 'text/event-stream'
             );
-            res.setHeader(
-                'Cache-Control',
-                'no-cache'
-            );
-            res.setHeader(
-                'Connection',
-                'keep-alive'
-            );
-
             response.data.pipe(res);
             return;
         }
 
-        // NORMAL
         const openaiResponse = {
-            id:
-                `chatcmpl-${Date.now()}`,
-            object:
-                'chat.completion',
+            id: `chatcmpl-${Date.now()}`,
+            object: 'chat.completion',
             created:
                 Math.floor(
                     Date.now()/1000
                 ),
-            model:
-                nimModel,
+            model: nimModel,
             choices:
                 response.data.choices.map(
-                    choice => {
-                        let content =
-                            choice
-                                .message
-                                ?.content ||
-                            '';
-
-                        if (
-                            SHOW_REASONING &&
-                            choice
-                                .message
-                                ?.reasoning_content
-                        ) {
-                            content =
-                                '<think>\n' +
+                    choice => ({
+                        index:
+                            choice.index,
+                        message: {
+                            role:
                                 choice
                                     .message
-                                    .reasoning_content +
-                                '\n</think>\n\n' +
-                                content;
-                        }
-
-                        return {
-                            index:
-                                choice.index,
-                            message: {
-                                role:
-                                    choice
-                                        .message
-                                        .role,
-                                content
-                            },
-                            finish_reason:
-                                choice.finish_reason
-                        };
-                    }
+                                    .role,
+                            content:
+                                choice
+                                    .message
+                                    .content ||
+                                ''
+                        },
+                        finish_reason:
+                            choice.finish_reason
+                    })
                 ),
             usage:
                 response.data
                     .usage || {
-                    prompt_tokens:
-                        0,
-                    completion_tokens:
-                        0,
-                    total_tokens:
-                        0
+                    prompt_tokens:0,
+                    completion_tokens:0,
+                    total_tokens:0
                 }
         };
 
@@ -252,33 +218,40 @@ async function handleChat(req, res) {
     } catch (error) {
 
         console.error(
-            '===================='
+            '===== NVIDIA ERROR ====='
         );
+
         console.error(
-            'Proxy error status:',
-            error.response
-                ?.status
+            'STATUS:',
+            error.response?.status
         );
+
         console.error(
-            'Proxy error data:',
+            'HEADERS:',
+            error.response?.headers
+        );
+
+        console.error(
+            'DATA:',
             JSON.stringify(
-                error.response
-                    ?.data,
+                error.response?.data,
                 null,
                 2
             )
         );
+
         console.error(
-            'Proxy error message:',
+            'MESSAGE:',
             error.message
         );
+
         console.error(
-            '===================='
+            '========================'
         );
 
         res.status(
-            error.response
-                ?.status || 500
+            error.response?.status ||
+            500
         ).json({
             error: {
                 message:
@@ -298,25 +271,21 @@ async function handleChat(req, res) {
     }
 }
 
-// OpenAI endpoint
-app.post(
-    '/v1/chat/completions',
-    handleChat
-);
-
-// Janitor AI endpoint
-app.post(
-    '/v1',
-    handleChat
-);
-
-// Alternate endpoint
 app.post(
     '/chat/completions',
     handleChat
 );
 
-// Catch all
+app.post(
+    '/v1/chat/completions',
+    handleChat
+);
+
+app.post(
+    '/v1',
+    handleChat
+);
+
 app.all('*', (req, res) => {
     res.status(404).json({
         error: {
@@ -333,15 +302,12 @@ app.listen(
     PORT,
     '0.0.0.0',
     () => {
-
         console.log(
             `OpenAI to NVIDIA NIM Proxy running on port ${PORT}`
         );
-
         console.log(
             `Health check: http://localhost:${PORT}/health`
         );
-
         console.log(
             `Reasoning display: ${
                 SHOW_REASONING
@@ -349,7 +315,6 @@ app.listen(
                     : 'DISABLED'
             }`
         );
-
         console.log(
             `Thinking mode: ${
                 ENABLE_THINKING_MODE
@@ -357,7 +322,6 @@ app.listen(
                     : 'DISABLED'
             }`
         );
-
         console.log(
             'API KEY:',
             NIM_API_KEY
