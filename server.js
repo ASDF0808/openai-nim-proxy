@@ -385,6 +385,10 @@ app.post(
         );
     }
 );
+app.post('/v1', async (req, res) => {
+    req.url = '/v1/chat/completions';
+    app._router.handle(req, res);
+});
 
 // Catch all
 app.all('*', (req, res) => {
