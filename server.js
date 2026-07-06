@@ -21,7 +21,7 @@ const ENABLE_THINKING_MODE = false;
 
 // Model mapping
 const MODEL_MAPPING = {
-    'gpt-4o': 'meta/llama-3.1-8b-instruct'
+    'gpt-4o': 'deepseek-v4-flash'
 };
 
 // Health check
