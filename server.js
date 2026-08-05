@@ -2,9 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-console.log("Using model:", nimModel);
-console.log("Messages:", messages.length);
-console.log("Max tokens:", max_tokens);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -69,8 +67,21 @@ app.get('/v1/models', (req, res) => {
 // Chat completions endpoint (main proxy)
 app.post('/v1/chat/completions', async (req, res) => {
   try {
-    const { model, messages, temperature, max_tokens, stream } = req.body;
-    console.log("Stream:", stream);
+      const { model, messages, temperature, max_tokens, stream } = req.body;
+
+      console.log("========== REQUEST ==========");
+      console.log("Model:", model);
+      console.log("Mapped Model:", MODEL_MAPPING[model] || model);
+      console.log("Stream:", stream);
+      console.log("Temperature:", temperature);
+      console.log("Max Tokens:", max_tokens);
+      console.log("Messages:", messages?.length || 0);
+      console.log(
+          "Request Size:",
+          Buffer.byteLength(JSON.stringify(req.body), "utf8"),
+          "bytes"
+      );
+      console.log("=============================");
     // Smart model selection with fallback
     let nimModel = MODEL_MAPPING[model];
     if (!nimModel) {
@@ -106,10 +117,16 @@ app.post('/v1/chat/completions', async (req, res) => {
       model: nimModel,
       messages: messages,
       temperature: temperature || 0.6,
-      max_tokens: max_tokens || 9024,
+      max_tokens: max_tokens || 512,
       extra_body: ENABLE_THINKING_MODE ? { chat_template_kwargs: { thinking: true } } : undefined,
       stream: stream || false
     };
+
+    console.log("========== NVIDIA REQUEST ==========");
+    console.log("Using model:", nimRequest.model);
+    console.log("Stream to NVIDIA:", nimRequest.stream);
+    console.log("Max Tokens:", nimRequest.max_tokens);
+    console.log("====================================");
     
     // Make request to NVIDIA NIM API
     const response = await axios.post(`${NIM_API_BASE}/chat/completions`, nimRequest, {
