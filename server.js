@@ -67,21 +67,8 @@ app.get('/v1/models', (req, res) => {
 // Chat completions endpoint (main proxy)
 app.post('/v1/chat/completions', async (req, res) => {
   try {
-      const { model, messages, temperature, max_tokens, stream } = req.body;
-
-      console.log("========== REQUEST ==========");
-      console.log("Model:", model);
-      console.log("Mapped Model:", MODEL_MAPPING[model] || model);
-      console.log("Stream:", stream);
-      console.log("Temperature:", temperature);
-      console.log("Max Tokens:", max_tokens);
-      console.log("Messages:", messages?.length || 0);
-      console.log(
-          "Request Size:",
-          Buffer.byteLength(JSON.stringify(req.body), "utf8"),
-          "bytes"
-      );
-      console.log("=============================");
+    const { model, messages, temperature, max_tokens, stream } = req.body;
+    console.log("Stream:", stream);
     // Smart model selection with fallback
     let nimModel = MODEL_MAPPING[model];
     if (!nimModel) {
@@ -113,23 +100,14 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
     
     // Transform OpenAI request to NIM format
-const nimRequest = {
-    model: nimModel,
-    messages,
-    temperature: temperature ?? 0.6,
-    max_tokens: Math.min(max_tokens ?? 512, 512),
-    extra_body: ENABLE_THINKING_MODE
-        ? { chat_template_kwargs: { thinking: true } }
-        : undefined,
-
-    stream: false
-};
-
-    console.log("========== NVIDIA REQUEST ==========");
-    console.log("Using model:", nimRequest.model);
-    console.log("Stream to NVIDIA:", nimRequest.stream);
-    console.log("Max Tokens:", nimRequest.max_tokens);
-    console.log("====================================");
+    const nimRequest = {
+      model: nimModel,
+      messages: messages,
+      temperature: temperature || 0.6,
+      max_tokens: max_tokens || 9024,
+      extra_body: ENABLE_THINKING_MODE ? { chat_template_kwargs: { thinking: true } } : undefined,
+      stream: stream || false
+    };
     
     // Make request to NVIDIA NIM API
     const response = await axios.post(`${NIM_API_BASE}/chat/completions`, nimRequest, {
@@ -273,3 +251,5 @@ app.listen(PORT, () => {
   console.log(`Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'DISABLED'}`);
   console.log(`Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'DISABLED'}`);
 });
+
+현재 코드야, 저 검증 코드를 넣어서 해줄래?
