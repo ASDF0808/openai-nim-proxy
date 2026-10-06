@@ -1,3 +1,14 @@
+import os
+import time
+import json
+from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
+from google import genai
+from google.genai import types
+
+app = Flask(__name__)
+CORS(app)
+
 @app.route('/v1/chat/completions', methods=['POST', 'OPTIONS'])
 def chat_completions():
     if request.method == 'OPTIONS':
