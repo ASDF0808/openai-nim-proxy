@@ -36,7 +36,7 @@ def chat_completions():
     elif '3.1' in req_model or '3.1-lite' in req_model:
         selected_model = 'gemini-3.1-flash-lite'
     elif 'gemma' in req_model or '31b' in req_model:
-        selected_model = 'gemma-4-31b'
+        selected_model = 'gemma-4-31b-it'
     else:
         selected_model = req_model if req_model else 'gemini-3.5-flash-lite'
 
